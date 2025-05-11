@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <p>Привіт, {{ session.user }}! <a href="{{ url_for('logout') }}">Вийти</a></p>
+  <h2>Порівняння текстів</h2>
+  <form method="post" enctype="multipart/form-data">
+    <div>
+      <label>Завантажити файл 1 (txt):</label><br>
+      <input type="file" name="file1" accept=".txt">
+    </div>
+    <div>
+      <label>Завантажити файл 2 (txt):</label><br>
+      <input type="file" name="file2" accept=".txt">
+    </div>
+    <p>або вставте тексти вручну:</p>
+    <textarea name="text1" rows="6" placeholder="Текст 1">{{ request.form.text1 or '' }}</textarea>
+    <textarea name="text2" rows="6" placeholder="Текст 2">{{ request.form.text2 or '' }}</textarea>
+    <button type="submit">Порівняти</button>
+  </form>
+  {% if result %}
+    <h3>Результати (згенеровано {{ result.generated }})</h3>
+    <ul>
+      <li>Стилістична схожість: {{ result.stylistic }}</li>
+      <li>Jaccard схожість: {{ result.jaccard }}</li>
+      <li>TF-IDF схожість: {{ result.tfidf }}</li>
+    </ul>
+    <h4>Висновок: {% if result.stylistic > 0.8 or result.tfidf > 0.5 %}Можливе спільне авторство.{% else %}Імовірно різні автори.{% endif %}</h4>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,157 @@
+import re
+import math
+import os
+import json
+from werkzeug.security import generate_password_hash, check_password_hash
+
+
+class StylisticFingerprint:
+    """
+    Клас для створення та порівняння стилістичних "відбитків" тексту.
+    """
+    def __init__(self, text: str):
+        self.text = text
+        self.fingerprint = self._compute_fingerprint()
+
+    def _compute_fingerprint(self) -> list[float]:
+        sentences = [s.strip() for s in re.split(r'[.!?]', self.text) if s.strip()]
+        words = re.findall(r"\b\w+\b", self.text.lower())
+        punctuation = re.findall(r'[,.!?;:]', self.text)
+
+        avg_sentence = sum(len(s.split()) for s in sentences) / len(sentences) if sentences else 0.0
+        avg_word = sum(len(w) for w in words) / len(words) if words else 0.0
+        punc_density = len(punctuation) / len(words) if words else 0.0
+        lex_div = len(set(words)) / len(words) if words else 0.0
+        short_ratio = len([s for s in sentences if len(s.split()) < 5]) / len(sentences) if sentences else 0.0
+
+        return [round(x, 3) for x in (avg_sentence, avg_word, punc_density, lex_div, short_ratio)]
+
+    @staticmethod
+    def compare(fp1: list[float], fp2: list[float], epsilon: float = 1e-8) -> float:
+        diffs = []
+        for a, b in zip(fp1, fp2):
+            if a == 0 and b == 0:
+                diffs.append(0.0)
+            else:
+                diffs.append(abs(a - b) / (max(a, b) + epsilon))
+        score = 1 - (sum(diffs) / len(diffs)) if diffs else 0.0
+        return round(score, 4)
+
+
+class JaccardSimilarity:
+    """
+    Клас для обчислення Jaccard-схожості між двома текстами.
+    """
+    @staticmethod
+    def compute(text1: str, text2: str) -> float:
+        set1 = set(re.findall(r"\b\w+\b", text1.lower()))
+        set2 = set(re.findall(r"\b\w+\b", text2.lower()))
+        union = set1 | set2
+        inter = set1 & set2
+        return round(len(inter) / len(union), 4) if union else 0.0
+
+
+class TfIdfSimilarity:
+    """
+    Клас для обчислення TF-IDF векторів і косинусної схожості.
+    """
+    def __init__(self, texts: list[str]):
+        self.texts = texts
+        self.vocab = self._build_vocab()
+        self.idf = self._compute_idf()
+
+    def _build_vocab(self) -> list[str]:
+        tokenized = [re.findall(r"\b\w+\b", t.lower()) for t in self.texts]
+        return sorted({w for toks in tokenized for w in toks})
+
+    def _compute_idf(self) -> dict[str, float]:
+        N = len(self.texts)
+        tokenized = [re.findall(r"\b\w+\b", t.lower()) for t in self.texts]
+        df = {w: sum(1 for toks in tokenized if w in toks) for w in self.vocab}
+        return {w: math.log((N + 1) / (df[w] + 1)) + 1 for w in self.vocab}
+
+    def compute_vectors(self) -> list[list[float]]:
+        vectors = []
+        for text in self.texts:
+            tokens = re.findall(r"\b\w+\b", text.lower())
+            vec = []
+            for w in self.vocab:
+                count = tokens.count(w)
+                tf = 1 + math.log(count) if count > 0 else 0.0
+                vec.append(tf * self.idf[w])
+            norm = math.sqrt(sum(x * x for x in vec))
+            vectors.append([x / norm for x in vec] if norm else vec)
+        return vectors
+
+    @staticmethod
+    def compare(vec1: list[float], vec2: list[float]) -> float:
+        dot = sum(a * b for a, b in zip(vec1, vec2))
+        return round(dot, 4) if vec1 and vec2 else 0.0
+
+
+class TextComparer:
+    """
+    Головний клас для порівняння двох текстів за всіма метриками.
+    """
+    def __init__(self, text1: str, text2: str):
+        self.text1 = text1
+        self.text2 = text2
+
+    def compare_all(self) -> dict[str, float]:
+        sf1 = StylisticFingerprint(self.text1).fingerprint
+        sf2 = StylisticFingerprint(self.text2).fingerprint
+        style_score = StylisticFingerprint.compare(sf1, sf2)
+        jaccard_score = JaccardSimilarity.compute(self.text1, self.text2)
+        tfidf = TfIdfSimilarity([self.text1, self.text2])
+        v1, v2 = tfidf.compute_vectors()
+        tfidf_score = TfIdfSimilarity.compare(v1, v2)
+        return {
+            'stylistic': style_score,
+            'jaccard': jaccard_score,
+            'tfidf': tfidf_score
+        }
+
+
+class User:
+    """Простий POJO-клас користувача з гешованим паролем."""
+    def __init__(self, username: str, password_hash: str):
+        self.username = username
+        self.password_hash = password_hash
+
+
+class AuthService:
+    """Сервіс для реєстрації та аутентифікації користувачів з flat-file JSON."""
+    def __init__(self, file_path: str = 'users.json'):
+        self.file_path = file_path
+        self._users: dict[str, User] = {}
+        self._load_users()
+
+    def _load_users(self) -> None:
+        if os.path.exists(self.file_path):
+            with open(self.file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            for username, pw_hash in data.items():
+                self._users[username] = User(username, pw_hash)
+        else:
+            # створити порожній файл
+            with open(self.file_path, 'w', encoding='utf-8') as f:
+                json.dump({}, f)
+
+    def _save_users(self) -> None:
+        data = {u: self._users[u].password_hash for u in self._users}
+        with open(self.file_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+    def register(self, username: str, password: str) -> bool:
+        if username in self._users:
+            return False
+        pw_hash = generate_password_hash(password)
+        self._users[username] = User(username, pw_hash)
+        self._save_users()
+        return True
+
+    def authenticate(self, username: str, password: str) -> bool:
+        user = self._users.get(username)
+        if not user:
+            return False
+        return check_password_hash(user.password_hash, password)

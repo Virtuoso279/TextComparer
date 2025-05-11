@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block content %}
+  <h2>Реєстрація</h2>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form method="post">
+    <input type="email" name="email" placeholder="Email" required>
+    <input type="password" name="password" placeholder="Пароль" required>
+    <button type="submit">Зареєструватися</button>
+  </form>
+  <p>Вже зареєстровані? <a href="{{ url_for('login') }}">Увійти</a></p>
+{% endblock %}

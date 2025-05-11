@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}Результат{% endblock %}
+{% block content %}
+  <h2>Результати (згенеровано {{ generated }})</h2>
+  <ul>
+    <li><b>Стилістична схожість:</b> {{ style }}</li>
+    <li><b>Jaccard схожість:</b> {{ jacc }}</li>
+    <li><b>TF-IDF схожість:</b> {{ tfidf }}</li>
+  </ul>
+  <h3>Висновок: {{ conclusion }}</h3>
+  <a href="{{ url_for('index') }}">Порівняти інші тексти</a>
+{% endblock %}
